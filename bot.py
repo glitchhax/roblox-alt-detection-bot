@@ -183,44 +183,69 @@ async def badge_graph(interaction: discord.Interaction, user: str) -> None:
         )
         return
 
-    # Group badges by month awarded
-    month_counts: dict[str, int] = {}
+    # Parse badge dates and sort chronologically
+    badge_dates: list[datetime] = []
     for badge in badges:
         awarded = badge.get("created", badge.get("updated", ""))
         if awarded:
             try:
                 dt = datetime.fromisoformat(awarded.replace("Z", "+00:00"))
-                key = dt.strftime("%Y-%m")
-                month_counts[key] = month_counts.get(key, 0) + 1
+                badge_dates.append(dt)
             except ValueError:
                 pass
 
-    if not month_counts:
-        # Fallback: show total badge count
-        month_counts = {"Total": len(badges)}
+    if not badge_dates:
+        await interaction.followup.send(
+            embed=discord.Embed(
+                title="No Data",
+                description=f"Could not parse badge dates for **{display_name}**.",
+                color=discord.Color.orange(),
+            )
+        )
+        return
 
-    sorted_months = sorted(month_counts.keys())
-    labels = sorted_months
-    values = [month_counts[m] for m in sorted_months]
+    badge_dates.sort()
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(labels, values, color="#5865F2")
-    ax.set_xlabel("Month")
-    ax.set_ylabel("Badges Earned")
-    ax.set_title(f"Badge Graph for {display_name} ({len(badges)} total badges)")
-    plt.xticks(rotation=45, ha="right")
+    # Build cumulative badge count over time
+    from matplotlib.dates import DateFormatter, YearLocator
+
+    cumulative = list(range(1, len(badge_dates) + 1))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    fig.patch.set_facecolor("#0a0a0a")
+    ax.set_facecolor("#0a0a0a")
+
+    ax.scatter(badge_dates, cumulative, color="#e6c619", s=18, zorder=5)
+
+    ax.set_title(f"Badge Tracking | {display_name}", color="white", fontsize=14, pad=10)
+    ax.text(0.01, 0.97, f"Badges: {len(badges)}", transform=ax.transAxes,
+            color="white", fontsize=11, fontweight="bold", va="top", ha="left")
+
+    ax.xaxis.set_major_locator(YearLocator())
+    ax.xaxis.set_major_formatter(DateFormatter("%Y"))
+    ax.tick_params(axis="x", colors="white", labelsize=10)
+    ax.tick_params(axis="y", colors="white", labelsize=10)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#333333")
+    ax.spines["bottom"].set_color("#333333")
+
+    ax.yaxis.grid(False)
+    ax.xaxis.grid(False)
+
     plt.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=120)
+    fig.savefig(buf, format="png", dpi=120, facecolor=fig.get_facecolor())
     buf.seek(0)
     plt.close(fig)
 
     file = discord.File(buf, filename="badge_graph.png")
     embed = discord.Embed(
-        title=f"Badge Graph — {display_name}",
-        description=f"Total badges: **{len(badges)}**",
-        color=discord.Color.blurple(),
+        title=f"Badge Tracking — {display_name}",
+        description=f"Badges: **{len(badges)}**",
+        color=discord.Color.from_rgb(230, 198, 25),
     )
     embed.set_image(url="attachment://badge_graph.png")
     embed.set_footer(text=f"Roblox ID: {user_id}")
